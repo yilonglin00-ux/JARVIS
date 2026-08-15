@@ -52,6 +52,52 @@ export interface LatencyMsg {
   ms: number;
 }
 
+export type RiskLevel = 'read' | 'low' | 'sensitive' | 'destructive';
+
+export interface ToolStartedMsg {
+  type: 'tool.started';
+  call_id: string;
+  tool: string;
+  risk: RiskLevel;
+  summary: string;
+  arguments: Record<string, unknown>;
+}
+
+export interface ToolFinishedMsg {
+  type: 'tool.finished';
+  call_id: string;
+  tool: string;
+  ok: boolean;
+  display_text: string;
+  duration_ms: number;
+}
+
+/**
+ * Rückfrage vor einer Aktion ab `sensitive`.
+ *
+ * `requires_tap` heißt: eine gesprochene Zustimmung genügt nicht, es
+ * braucht den Fingertipp. Der Host kann nicht sehen, wie geantwortet
+ * wurde — durchsetzen muss das der Client.
+ */
+export interface ConfirmRequestMsg {
+  type: 'confirm.request';
+  request_id: string;
+  tool: string;
+  risk: RiskLevel;
+  summary: string;
+  arguments: Record<string, unknown>;
+  requires_tap: boolean;
+  timeout_s: number;
+}
+
+/** Die Rückfrage ist erledigt — auch durch Zeitablauf oder Abbruch. */
+export interface ConfirmResolvedMsg {
+  type: 'confirm.resolved';
+  request_id: string;
+  approved: boolean;
+  decided_by: string;
+}
+
 export interface ErrorMsg {
   type: 'error';
   message: string;
@@ -65,6 +111,10 @@ export type ServerMessage =
   | TextDeltaMsg
   | ReplyCompletedMsg
   | LatencyMsg
+  | ToolStartedMsg
+  | ToolFinishedMsg
+  | ConfirmRequestMsg
+  | ConfirmResolvedMsg
   | ErrorMsg;
 
 // --- Client -> Host -----------------------------------------------------------
@@ -92,11 +142,34 @@ export interface MicToggleMsg {
   open: boolean;
 }
 
+/**
+ * Antwort auf eine `confirm.request`.
+ *
+ * Ausbleiben ist kein gültiger Wert: nur `approved: true` lässt die Aktion
+ * zu, alles andere — auch gar keine Nachricht — verhindert sie.
+ */
+export interface ConfirmResponseMsg {
+  type: 'confirm.response';
+  request_id: string;
+  approved: boolean;
+}
+
+/** Kill-Switch: bricht den laufenden Turn ab und lehnt offene Rückfragen ab. */
+export interface StopMsg {
+  type: 'user.stop';
+}
+
 export interface PingMsg {
   type: 'ping';
 }
 
-export type ClientMessage = UserTextMsg | UserInterruptMsg | MicToggleMsg | PingMsg;
+export type ClientMessage =
+  | UserTextMsg
+  | UserInterruptMsg
+  | MicToggleMsg
+  | ConfirmResponseMsg
+  | StopMsg
+  | PingMsg;
 
 // --- Binärrahmen --------------------------------------------------------------
 //

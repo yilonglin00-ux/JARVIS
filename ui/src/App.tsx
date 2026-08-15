@@ -1,14 +1,20 @@
 /**
- * Phase-2-Oberfläche: bewusst hässlich.
+ * Oberfläche für die Phasen 2 und 3: bewusst hässlich.
  *
- * Hier wird nichts gestaltet. Diese Ansicht existiert, um die Sprachschleife
- * beurteilen zu können — Zustand, Transkript, Antwort, Latenz, Ereignislog.
- * Das HUD aus dem Entwurf kommt in Phase 7 und ersetzt genau diese Datei,
- * ohne dass an `lib/` etwas geändert werden muss.
+ * Hier wird nichts gestaltet. Diese Ansicht existiert, um Sprachschleife und
+ * Werkzeuge beurteilen zu können — Zustand, Transkript, Antwort, Latenz,
+ * laufende Werkzeuge, Ereignislog. Das HUD aus dem Entwurf kommt in Phase 7
+ * und ersetzt genau diese Datei, ohne dass an `lib/` etwas geändert wird.
+ *
+ * Eine Ausnahme von „ungestaltet“ gibt es: den Bestätigungsdialog. Er ist
+ * kein Schmuck, sondern die Stelle, an der der Nutzer eine Aktion mit
+ * Außenwirkung freigibt — der muss auch in einer rohen Oberfläche lesbar
+ * und schwer zu verklicken sein.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { ConfirmDialog } from './components/ConfirmDialog';
 import { initialView, JarvisClient, type JarvisView } from './lib/jarvis';
 
 function defaultUrl(): string {
@@ -60,9 +66,14 @@ export default function App() {
     [client, draft],
   );
 
+  const respond = useCallback(
+    (requestId: string, approved: boolean) => client.respondToConfirmation(requestId, approved),
+    [client],
+  );
+
   return (
     <main>
-      <h1>JARVIS — Phase 2</h1>
+      <h1>JARVIS — Phase 3</h1>
 
       <section>
         <label htmlFor="url">Host</label>
@@ -107,6 +118,16 @@ export default function App() {
         >
           Stopp
         </button>
+        {/* Kill-Switch: immer erreichbar, auch während JARVIS denkt oder
+            auf eine Bestätigung wartet (Architektur §12). */}
+        <button
+          type="button"
+          className="danger"
+          onClick={() => client.stopEverything()}
+          disabled={view.connection !== 'open'}
+        >
+          Alles stoppen
+        </button>
       </section>
 
       <form onSubmit={submitText}>
@@ -136,6 +157,21 @@ export default function App() {
         <p className="reply">{view.reply || '—'}</p>
       </section>
 
+      {view.tools.length > 0 && (
+        <section>
+          <h2>Werkzeuge</h2>
+          <ul className="tools">
+            {view.tools.map((entry) => (
+              <li key={entry.callId} className={entry.running ? 'running' : entry.ok ? '' : 'failed'}>
+                <strong>{entry.tool}</strong> <span className="risk">{entry.risk}</span>
+                {entry.running ? ' läuft …' : ` ${entry.durationMs} ms`}
+                {entry.detail && <div className="tool-detail">{entry.detail}</div>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section>
         <h2>Ereignisse</h2>
         <ul className="log">
@@ -144,6 +180,8 @@ export default function App() {
           ))}
         </ul>
       </section>
+
+      {view.confirm && <ConfirmDialog request={view.confirm} onRespond={respond} />}
     </main>
   );
 }

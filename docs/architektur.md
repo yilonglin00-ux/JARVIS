@@ -535,14 +535,37 @@ Der Audiopegel wird **nicht** übertragen — der Client misst ihn lokal am `Ana
 | Phase | Umfang | Definition of Done |
 |---|---|---|
 | **1. Architektur** | *dieses Dokument* | Freigabe durch dich |
-| **2. Minimal Viable JARVIS** | Host: Repo-Setup, Config, Event-Bus, `JarvisCore`, WS-Server + Auth, je 1× STT/TTS/LLM hinter den ABCs, Barge-in-Gegenstück. iPad: minimaler Client (Mic-Capture, AudioWorklet-Player, Silero-VAD, „Tap to Speak", Statusanzeige, Roh-Transkript) — **bewusst hässlich**, kein HUD. | Flüssiges deutsches Sprachgespräch vom iPad über mehrere Turns mit Kontextbezug; Reinsprechen stoppt die Ausgabe in < 300 ms; kein hörbares Echo; Latenzen protokolliert |
-| **3. Tools** | `ToolRegistry`, `Tool`-ABC, Risikostufen, Bestätigungsfluss (inkl. Dialog auf dem iPad), Browser-Tool (Playwright auf dem Host), erste Builtins | „Öffne diese Seite und finde die Preise" funktioniert Ende zu Ende; eine SENSITIVE-Aktion löst nachweislich einen Bestätigungsdialog aus |
+| **2. Minimal Viable JARVIS** ✅ | Host: Repo-Setup, Config, Event-Bus, `JarvisCore`, WS-Server + Auth, je 1× STT/TTS/LLM hinter den ABCs, Barge-in-Gegenstück. iPad: minimaler Client (Mic-Capture, AudioWorklet-Player, Silero-VAD, „Tap to Speak", Statusanzeige, Roh-Transkript) — **bewusst hässlich**, kein HUD. | Flüssiges deutsches Sprachgespräch vom iPad über mehrere Turns mit Kontextbezug; Reinsprechen stoppt die Ausgabe in < 300 ms; kein hörbares Echo; Latenzen protokolliert |
+| **3. Tools** ✅ | `ToolRegistry`, `Tool`-ABC, Risikostufen, Bestätigungsfluss (inkl. Dialog auf dem iPad), Browser-Tool (Playwright auf dem Host), erste Builtins | „Öffne diese Seite und finde die Preise" funktioniert Ende zu Ende; eine SENSITIVE-Aktion löst nachweislich einen Bestätigungsdialog aus |
 | **4. Research + Perplexity** | `ResearchProvider`-Abstraktion, Perplexity Sonar, Websuche, Fetcher/Extractor/Evaluator | Mehrquellen-Recherche mit Zitaten; ein widersprüchliches Thema wird als widersprüchlich benannt |
 | **5. Planner + Agenten** | Planner, Agent-ABC + Registry, Conversation/Research/Browser-Agent, Schritt- und Kostenbudgets | Mehrschrittige Aufträge werden zerlegt und delegiert; Plan ist im Client sichtbar |
 | **6. Memory** | SQLite + sqlite-vec, Short/Working/Long-Term, Hybrid-Retrieval, Extraktions-Gate | JARVIS erinnert sich sitzungsübergreifend; Einträge sind einsehbar und löschbar |
 | **7. HUD + Erweiterungen** | Vollständiges HUD nach Screenshot, Sprechblase, visuelle Haptik, PWA-Manifest/Icons, Wake Word (Vordergrund), optional Capacitor-Hülle, MCP-Client, Integrationen | Der Screenshot ist real und funktional auf dem iPad |
 
 Nach jeder Phase: lauffähiger Stand, Tests grün, kurzer Abnahme-Check mit dir. Kein „Big Bang".
+
+**Stand:** Phasen 2 und 3 sind im Code umgesetzt und mit Fakes geprüft. Die
+Abnahme auf echter Hardware steht in [`phase2-abnahme.md`](phase2-abnahme.md)
+und [`phase3-abnahme.md`](phase3-abnahme.md) — beide noch offen.
+
+Drei Entscheidungen aus Phase 3, die im Entwurf oben noch nicht standen und die
+sich beim Bauen ergeben haben:
+
+1. **Die Bestätigung liegt im `ToolRegistry`, nicht im Werkzeug.** Der Entwurf
+   ließ offen, wer fragt. Läge es im Werkzeug, wäre die Rückfrage eine
+   Konvention, die man vergessen kann; in der Registry ist sie eine Eigenschaft
+   der Ausführungsstrecke.
+2. **Risiko kann von den Argumenten abhängen** (`Tool.risk_for`). Eine neue
+   Datei anzulegen ist `LOW`, eine bestehende zu überschreiben `SENSITIVE`;
+   einem Link zu folgen ist Navigation, einen Knopf zu drücken kann etwas
+   kaufen. Ohne diese Unterscheidung müsste man zwischen „fragt zu oft“ und
+   „fragt zu selten“ wählen — und beides ist ein Sicherheitsproblem, weil
+   ständige Rückfragen genauso reflexhaft weggetippt werden wie generische.
+3. **Der Werkzeugverkehr bleibt turn-lokal.** Aufrufe und Ergebnisse gehen
+   nicht in den Gesprächsverlauf, nur die gesprochene Antwort. Sonst wüchse der
+   Kontext mit jedem Werkzeug, und das Modell bezöge sich in späteren Turns auf
+   Rohdaten statt auf das, was es gesagt hat. Ab Phase 6 übernimmt das Working
+   Memory diese Rolle bewusst.
 
 **Zusätzlicher Aufwand durch Phase 2 auf dem iPad** gegenüber Desktop: Audio-I/O muss in TypeScript statt Python gebaut werden (AudioWorklets, Resampling, VAD in WASM), plus HTTPS-Setup. Grob ein bis zwei zusätzliche Arbeitstage — dafür entfällt die AEC-Eigenentwicklung, die deutlich teurer gewesen wäre.
 

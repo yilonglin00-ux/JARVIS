@@ -12,11 +12,25 @@ from typing import Any
 
 import structlog
 
+from jarvis.browser.base import BrowserBackend
+from jarvis.browser.tools import browser_tools
 from jarvis.config.settings import Settings
 from jarvis.core.errors import ConfigurationError
 from jarvis.llm.base import LLMProvider
 from jarvis.llm.fake import FakeLLM
 from jarvis.llm.router import ModelRouter
+from jarvis.security.policy import PolicyEngine
+from jarvis.tools.base import Tool
+from jarvis.tools.builtin import (
+    AppendNoteTool,
+    ClockTool,
+    DeleteFileTool,
+    ListFilesTool,
+    ReadFileTool,
+    ReadNotesTool,
+    WriteFileTool,
+)
+from jarvis.tools.registry import ToolRegistry
 from jarvis.voice.stt.base import SpeechToText
 from jarvis.voice.stt.fake import FakeSTT
 from jarvis.voice.tts.base import TextToSpeech, VoiceSpec
@@ -84,6 +98,64 @@ def build_tts(settings: Settings) -> TextToSpeech:
             speed=_opt(options, "speed", 1.0),
         )
     raise ConfigurationError(f"Unbekannter TTS-Provider '{name}' in config/jarvis.yaml")
+
+
+def build_browser_backend(settings: Settings, policy: PolicyEngine) -> BrowserBackend | None:
+    """Backend für die Browser-Werkzeuge, oder None wenn abgeschaltet.
+
+    Ohne Einträge in `browser.allowed_domains` dürfte der Browser ohnehin
+    keine einzige Seite öffnen. Dann die Werkzeuge gar nicht erst
+    anzubieten, ist ehrlicher als ein Modell, das es versucht und jedes
+    Mal eine Absage bekommt.
+    """
+    if not settings.profile.tools.browser:
+        return None
+    if not policy.allowed_domains:
+        log.warning("browser.disabled", reason="browser.allowed_domains ist leer")
+        return None
+
+    from jarvis.browser.playwright_backend import PlaywrightBackend
+
+    download_dir = policy.download_dir
+    download_dir.mkdir(parents=True, exist_ok=True)
+    return PlaywrightBackend(
+        headless=settings.profile.tools.browser_headless,
+        download_dir=str(download_dir),
+    )
+
+
+def build_tools(
+    settings: Settings,
+    policy: PolicyEngine,
+    *,
+    browser: BrowserBackend | None = None,
+) -> ToolRegistry:
+    """Alle aktiven Werkzeuge. Die Policy entscheidet, was mitkommt."""
+    registry = ToolRegistry()
+    if not settings.profile.tools.enabled:
+        return registry
+
+    root = policy.files_root
+    candidates: list[Tool] = [
+        ClockTool(default_timezone=settings.profile.tools.timezone),
+        ListFilesTool(root, max_bytes=policy.max_file_bytes),
+        ReadFileTool(root, max_bytes=policy.max_file_bytes),
+        WriteFileTool(root, max_bytes=policy.max_file_bytes),
+        DeleteFileTool(root, max_bytes=policy.max_file_bytes),
+        AppendNoteTool(root),
+        ReadNotesTool(root),
+    ]
+    if browser is not None:
+        candidates += browser_tools(browser)
+
+    for tool in candidates:
+        # Abgeschaltete Werkzeuge tauchen gar nicht erst im Schema auf. Ein
+        # Modell, das ein Werkzeug sieht und dann eine Absage bekommt,
+        # versucht es beim nächsten Turn wieder.
+        if policy.is_enabled(tool.name):
+            registry.register(tool)
+    log.info("tools.ready", count=len(registry), names=registry.names)
+    return registry
 
 
 def build_router(settings: Settings) -> ModelRouter:

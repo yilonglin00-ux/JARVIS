@@ -8,15 +8,16 @@ Diese Datei ist die *Quelle der Wahrheit*. `ui/src/lib/protocol.ts` ist
 ihr handgepflegtes Gegenstück; `tests/test_protocol.py` prüft, dass beide
 Seiten dieselben Nachrichtentypen kennen.
 
-Phase 2 implementiert bewusst nur die Teilmenge, die für die Sprach-
-schleife nötig ist. Tool-, Agenten-, Memory- und Bestätigungsereignisse
-kommen in den Phasen 3 bis 6 dazu, ohne dass sich das Rahmenformat ändert.
+Phase 2 hat die Sprachschleife abgedeckt, Phase 3 Werkzeuge und
+Bestätigungen ergänzt — ohne dass sich das Rahmenformat ändern musste.
+Agenten-, Plan- und Memory-Ereignisse kommen in den Phasen 5 und 6 auf
+demselben Weg dazu.
 """
 
 from __future__ import annotations
 
 import struct
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, TypeAdapter
 
@@ -97,6 +98,55 @@ class LatencyMsg(BaseModel):
     ms: float
 
 
+class ToolStartedMsg(BaseModel):
+    type: Literal["tool.started"] = "tool.started"
+    call_id: str
+    tool: str
+    risk: str
+    summary: str = ""
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+class ToolFinishedMsg(BaseModel):
+    type: Literal["tool.finished"] = "tool.finished"
+    call_id: str
+    tool: str
+    ok: bool = True
+    display_text: str = ""
+    duration_ms: float = 0.0
+
+
+class ConfirmRequestMsg(BaseModel):
+    """Rückfrage vor einer Aktion ab `SENSITIVE`.
+
+    `requires_tap` heißt: eine gesprochene Zustimmung genügt hier nicht,
+    es braucht den Fingertipp. Der Client muss das durchsetzen — der Host
+    kann nicht sehen, wie geantwortet wurde.
+    """
+
+    type: Literal["confirm.request"] = "confirm.request"
+    request_id: str
+    tool: str
+    risk: str
+    summary: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    requires_tap: bool = False
+    timeout_s: float = 60.0
+
+
+class ConfirmResolvedMsg(BaseModel):
+    """Die Rückfrage ist erledigt — auch durch Zeitablauf oder Abbruch.
+
+    Der Client braucht das, um den Dialog wieder zu schließen, wenn *er*
+    nicht derjenige war, der geantwortet hat.
+    """
+
+    type: Literal["confirm.resolved"] = "confirm.resolved"
+    request_id: str
+    approved: bool
+    decided_by: str = "user"
+
+
 class ErrorMsg(BaseModel):
     type: Literal["error"] = "error"
     message: str
@@ -110,6 +160,10 @@ ServerMessage = Annotated[
     | TextDeltaMsg
     | ReplyCompletedMsg
     | LatencyMsg
+    | ToolStartedMsg
+    | ToolFinishedMsg
+    | ConfirmRequestMsg
+    | ConfirmResolvedMsg
     | ErrorMsg,
     Field(discriminator="type"),
 ]
@@ -142,12 +196,31 @@ class MicToggleMsg(BaseModel):
     open: bool
 
 
+class ConfirmResponseMsg(BaseModel):
+    """Antwort auf eine `confirm.request`.
+
+    Ausbleiben ist kein gültiger Wert: nur `approved=true` lässt die
+    Aktion zu, alles andere — auch gar keine Nachricht — verhindert sie.
+    """
+
+    type: Literal["confirm.response"] = "confirm.response"
+    request_id: str
+    approved: bool
+
+
+class StopMsg(BaseModel):
+    """Kill-Switch. Bricht den laufenden Turn ab und lehnt jede offene
+    Rückfrage ab — im Zweifel lieber zu viel gestoppt als zu wenig."""
+
+    type: Literal["user.stop"] = "user.stop"
+
+
 class PingMsg(BaseModel):
     type: Literal["ping"] = "ping"
 
 
 ClientMessage = Annotated[
-    UserTextMsg | UserInterruptMsg | MicToggleMsg | PingMsg,
+    UserTextMsg | UserInterruptMsg | MicToggleMsg | ConfirmResponseMsg | StopMsg | PingMsg,
     Field(discriminator="type"),
 ]
 
@@ -164,7 +237,14 @@ def dump_server_message(message: ServerMessage) -> str:
 
 
 CLIENT_MESSAGE_TYPES: frozenset[str] = frozenset(
-    {"user.text", "user.interrupt", "mic.toggle", "ping"}
+    {
+        "user.text",
+        "user.interrupt",
+        "user.stop",
+        "mic.toggle",
+        "confirm.response",
+        "ping",
+    }
 )
 SERVER_MESSAGE_TYPES: frozenset[str] = frozenset(
     {
@@ -175,6 +255,10 @@ SERVER_MESSAGE_TYPES: frozenset[str] = frozenset(
         "text.delta",
         "reply.completed",
         "metrics.latency",
+        "tool.started",
+        "tool.finished",
+        "confirm.request",
+        "confirm.resolved",
         "error",
     }
 )

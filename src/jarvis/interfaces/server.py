@@ -25,6 +25,8 @@ from jarvis.config.settings import Settings, load_settings
 from jarvis.core.errors import AuthenticationError
 from jarvis.core.events import (
     AudioChunkReady,
+    ConfirmationRequested,
+    ConfirmationResolved,
     ErrorOccurred,
     Event,
     EventBus,
@@ -32,12 +34,17 @@ from jarvis.core.events import (
     ReplyCompleted,
     ReplyDelta,
     StateChanged,
+    ToolFinished,
+    ToolStarted,
     TranscriptReceived,
 )
 from jarvis.core.kernel import JarvisCore
 from jarvis.core.session import Session
 from jarvis.interfaces.auth import RateLimiter, TokenAuth
 from jarvis.interfaces.protocol import (
+    ConfirmRequestMsg,
+    ConfirmResolvedMsg,
+    ConfirmResponseMsg,
     ErrorMsg,
     LatencyMsg,
     MicToggleMsg,
@@ -46,7 +53,10 @@ from jarvis.interfaces.protocol import (
     ServerMessage,
     SessionReady,
     StateChangedMsg,
+    StopMsg,
     TextDeltaMsg,
+    ToolFinishedMsg,
+    ToolStartedMsg,
     TranscriptMsg,
     UserInterruptMsg,
     UserTextMsg,
@@ -57,6 +67,10 @@ from jarvis.interfaces.protocol import (
 from jarvis.llm.base import LLMProvider
 from jarvis.llm.router import ModelRouter
 from jarvis.logging import configure_logging
+from jarvis.security.confirm import ConfirmationBroker
+from jarvis.security.policy import PolicyEngine, load_policies
+from jarvis.tools.base import ToolContext
+from jarvis.tools.registry import ToolRegistry
 from jarvis.voice.pipeline import VoicePipeline
 
 log = structlog.get_logger(__name__)
@@ -87,6 +101,38 @@ def to_wire(event: Event) -> ServerMessage | None:
             return ReplyCompletedMsg(spoken=event.spoken, interrupted=event.interrupted)
         case LatencyMeasured():
             return LatencyMsg(name=event.name, ms=event.ms)
+        case ToolStarted():
+            return ToolStartedMsg(
+                call_id=event.call_id,
+                tool=event.tool,
+                risk=event.risk,
+                summary=event.summary,
+                arguments=dict(event.arguments),
+            )
+        case ToolFinished():
+            return ToolFinishedMsg(
+                call_id=event.call_id,
+                tool=event.tool,
+                ok=event.ok,
+                display_text=event.display_text,
+                duration_ms=event.duration_ms,
+            )
+        case ConfirmationRequested():
+            return ConfirmRequestMsg(
+                request_id=event.request_id,
+                tool=event.tool,
+                risk=event.risk,
+                summary=event.summary,
+                arguments=dict(event.arguments),
+                requires_tap=event.requires_tap,
+                timeout_s=event.timeout_s,
+            )
+        case ConfirmationResolved():
+            return ConfirmResolvedMsg(
+                request_id=event.request_id,
+                approved=event.approved,
+                decided_by=event.decided_by,
+            )
         case ErrorOccurred():
             return ErrorMsg(message=event.message, recoverable=event.recoverable)
         case _:
@@ -103,14 +149,33 @@ class Connection:
         settings: Settings,
         llm: LLMProvider,
         router: ModelRouter,
+        policy: PolicyEngine,
+        tools: ToolRegistry,
     ) -> None:
         self._ws = websocket
         self._settings = settings
         self.bus = EventBus()
         self.session = Session(self.bus, history_turns=settings.voice.history_turns)
+        # Broker und Kontext gehören zur Verbindung, nicht zum Prozess:
+        # zwei Sitzungen dürfen einander keine Rückfragen beantworten.
+        self.confirm = ConfirmationBroker(self.bus, timeout_s=policy.confirm_timeout_s)
+        self._tool_ctx = ToolContext(
+            session_id=self.session.id,
+            bus=self.bus,
+            policy=policy,
+            confirm=self.confirm,
+        )
         # Der Core hängt am Bus *dieser* Verbindung — sonst landeten die
         # Text-Deltas in einem Bus, den niemand liest.
-        core = JarvisCore(llm=llm, settings=settings, bus=self.bus, router=router)
+        core = JarvisCore(
+            llm=llm,
+            settings=settings,
+            bus=self.bus,
+            router=router,
+            tools=tools,
+            tool_context=self._tool_ctx,
+            max_tool_steps=policy.max_tool_steps,
+        )
         self._stt = factory.build_stt(settings)
         self._tts = factory.build_tts(settings)
         self.pipeline = VoicePipeline(
@@ -193,7 +258,16 @@ class Connection:
                         name="text-turn",
                     )
             case UserInterruptMsg():
+                # Beim Barge-in auch offene Rückfragen abräumen: wer
+                # dazwischenredet, statt zu antworten, hat nicht zugestimmt.
+                self.confirm.deny_all(reason="barge_in")
                 await self.pipeline.interrupt(played_ms=parsed.played_ms, reason=parsed.reason)
+            case ConfirmResponseMsg():
+                if not self.confirm.resolve(parsed.request_id, approved=parsed.approved):
+                    log.info("confirm.stale_response", request=parsed.request_id)
+            case StopMsg():
+                self.confirm.deny_all(reason="kill_switch")
+                await self.pipeline.interrupt(reason="kill_switch")
             case MicToggleMsg():
                 self.pipeline.set_mic_open(parsed.open)
             case PingMsg():
@@ -227,9 +301,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Der LLM-Client ist zustandslos und wird geteilt; STT und TTS sind
-        # es nicht und entstehen pro Verbindung.
+        # es nicht und entstehen pro Verbindung. Werkzeuge sind ebenfalls
+        # zustandslos genug, um geteilt zu werden — der veränderliche Teil
+        # steckt im `ToolContext`, und der gehört zur Verbindung.
+        policy = PolicyEngine(load_policies())
         llm = factory.build_llm(settings)
+        browser = factory.build_browser_backend(settings, policy)
         app.state.llm = llm
+        app.state.policy = policy
+        app.state.tools = factory.build_tools(settings, policy, browser=browser)
         app.state.router = factory.build_router(settings)
         log.info(
             "jarvis.started",
@@ -237,11 +317,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             stt=settings.profile.providers.stt,
             tts=settings.profile.providers.tts,
             llm=settings.profile.providers.llm,
+            tools=len(app.state.tools),
         )
         try:
             yield
         finally:
             await llm.aclose()
+            if browser is not None:
+                await browser.aclose()
 
     app = FastAPI(title="JARVIS Host", version=__version__, lifespan=lifespan)
     app.state.settings = settings
@@ -272,6 +355,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings=settings,
             llm=app.state.llm,
             router=app.state.router,
+            policy=app.state.policy,
+            tools=app.state.tools,
         )
         log.info("ws.connected", client=client, session=connection.session.id)
         try:

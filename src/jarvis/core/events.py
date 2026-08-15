@@ -93,6 +93,51 @@ class Interrupted(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class ToolStarted(Event):
+    """Ein Werkzeug läuft an. `arguments` ist bereits redigiert."""
+
+    call_id: str = ""
+    tool: str = ""
+    risk: str = "read"
+    summary: str = ""
+    arguments: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class ToolFinished(Event):
+    call_id: str = ""
+    tool: str = ""
+    ok: bool = True
+    display_text: str = ""
+    duration_ms: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class ConfirmationRequested(Event):
+    """Rückfrage vor einer Aktion ab `SENSITIVE`.
+
+    Geht an alle Clients der Sitzung. Wer zuerst antwortet, entscheidet;
+    keine Antwort innerhalb `timeout_s` gilt als Ablehnung.
+    """
+
+    request_id: str = ""
+    tool: str = ""
+    risk: str = "sensitive"
+    summary: str = ""
+    arguments: dict[str, object] = field(default_factory=dict)
+    requires_tap: bool = False
+    timeout_s: float = 60.0
+
+
+@dataclass(frozen=True, slots=True)
+class ConfirmationResolved(Event):
+    request_id: str = ""
+    approved: bool = False
+    # "user", "timeout" oder "cancelled" — für das Log und die Anzeige.
+    decided_by: str = "user"
+
+
+@dataclass(frozen=True, slots=True)
 class ErrorOccurred(Event):
     message: str = ""
     recoverable: bool = True

@@ -49,6 +49,18 @@ llm:
     # Prompt-Caching für System-Prompt und (später) Tool-Schemas.
     prompt_caching: true
 
+tools:
+  # Ob JARVIS überhaupt Werkzeuge angeboten bekommt.
+  enabled: true
+  # Der Browser bleibt standardmäßig aus. Er braucht zusätzlich
+  # `uv pip install -e ".[browser]"`, `playwright install chromium` und
+  # mindestens eine Domain in browser.allowed_domains in policies.yaml —
+  # ohne die läuft er auch bei true nicht an.
+  browser: false
+  browser_headless: true
+  # Leer = Zeitzone des Hosts.
+  timezone: "Europe/Berlin"
+
 voice:
   # Audioformat auf der Leitung iPad -> Host.
   input_sample_rate: 16000

@@ -4,7 +4,7 @@ Wer ein Mikrofon in die Wohnung stellt, hat ein Recht darauf, genau zu wissen,
 was wohin geht. Diese Datei listet das pro Provider auf und wird bei jedem
 neuen Provider mitgepflegt.
 
-## Phase 2 — was heute existiert
+## Phase 2 und 3 — was heute existiert
 
 | Weg | Inhalt | Empfänger | Verschlüsselt | Gespeichert |
 |---|---|---|---|---|
@@ -20,6 +20,30 @@ neuen Provider mitgepflegt.
 verlässt über den Host dein Netz. Das ist eine bewusste Entscheidung für
 Qualität und Latenz, keine Nebenwirkung.
 
+### Dazu seit Phase 3 (Werkzeuge)
+
+| Weg | Inhalt | Empfänger | Verschlüsselt | Gespeichert |
+|---|---|---|---|---|
+| Host → Anthropic | Zusätzlich: Werkzeugschemas, Werkzeugaufrufe und deren **Ergebnisse** | Anthropic | ja | nach Anbieterrichtlinie |
+| Dateiwerkzeuge | Nur innerhalb `files.root` (Vorgabe `~/JARVIS-Dateien`) | bleibt lokal | — | ja, das ist ihr Zweck |
+| Notizen | Klartext in `notizen.md` im selben Verzeichnis | bleibt lokal | — | ja, dauerhaft |
+| Host → Webseite (Browser) | HTTP-Anfragen mit eigenem Browserprofil, nur an Domains aus `browser.allowed_domains` | die Webseite | je nach Seite | Cookies im eigenen Profil, getrennt vom Alltagsbrowser |
+| Webseite → Host → Anthropic | Seitentext, als nicht vertrauenswürdig markiert | Anthropic | ja | nach Anbieterrichtlinie |
+| Host → iPad | Werkzeugname, Risiko, **redigierte** Argumente | iPad | ja (wss) | nein |
+
+**Der wichtigste neue Datenfluss:** Was ein Werkzeug liest, geht ans Modell —
+also an Anthropic. Wer JARVIS eine Datei vorlesen lässt, schickt ihren Inhalt in
+die Cloud. Der Sandkasten begrenzt, *welche* Dateien überhaupt in Frage kommen;
+er verhindert nicht, dass ihr Inhalt den Host verlässt.
+
+**Zwei Regeln zur Redaction, die sich unterscheiden:**
+
+- Im **Log** und in `tool.started` werden Werte unter Schlüsseln wie
+  `password`, `token` oder `api_key` durch `<verborgen>` ersetzt.
+- In der **Rückfrage** stehen die echten Werte. Eine Bestätigung, die den
+  Empfänger einer Mail verschweigt, wäre keine Bestätigung. Wer beurteilen
+  soll, muss sehen.
+
 ## Was ausdrücklich nicht passiert
 
 - **Kein Audio auf der Platte.** Weder auf dem iPad noch auf dem Host. Es gibt
@@ -34,6 +58,12 @@ Qualität und Latenz, keine Nebenwirkung.
 - **Kein offener Port ins Internet.** Der WS-Endpunkt verlangt einen Token und
   gehört hinter Tailscale oder ans lokale Interface gebunden. Kein
   Port-Forwarding im Router.
+- **Kein Dateizugriff außerhalb des Sandkastens.** Auch nicht über `..`, nicht
+  über absolute Pfade und nicht über Symlinks — geprüft wird der *aufgelöste*
+  Pfad, nicht der angegebene.
+- **Kein Browserzugriff ins eigene Netz.** Loopback, private IP-Bereiche und
+  Link-Local sind gesperrt, selbst wenn `allowed_domains` auf `*` steht. Eine
+  Wildcard ist eine Entscheidung über das Internet, nicht über deinen Router.
 
 ## Mikrofon-Kontrolle auf dem iPad
 

@@ -47,6 +47,22 @@ class VoiceConfig(BaseModel):
         return int(self.input_sample_rate * self.input_frame_ms / 1000) * 2
 
 
+class ToolsConfig(BaseModel):
+    """Was an Werkzeugen überhaupt angeboten wird.
+
+    Der Feinschnitt — welches Werkzeug welche Risikostufe hat, welche
+    Domains der Browser sehen darf — steht bewusst nicht hier, sondern in
+    `config/policies.yaml`. Diese Datei sagt *ob*, jene sagt *unter
+    welchen Bedingungen*.
+    """
+
+    enabled: bool = True
+    browser: bool = False
+    browser_headless: bool = True
+    # Leer = Zeitzone des Hosts.
+    timezone: str = ""
+
+
 class LimitsConfig(BaseModel):
     max_turn_seconds: int = 120
     max_monthly_usd: float = 150.0
@@ -58,6 +74,7 @@ class Profile(BaseModel):
     profile: ProfileConfig = Field(default_factory=ProfileConfig)
     providers: ProviderSelection = Field(default_factory=ProviderSelection)
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
+    tools: ToolsConfig = Field(default_factory=ToolsConfig)
     limits: LimitsConfig = Field(default_factory=LimitsConfig)
 
     # Anbieterspezifische Blöcke bleiben absichtlich untypisiert: der Core
