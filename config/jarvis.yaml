@@ -1,0 +1,67 @@
+# JARVIS — Profilkonfiguration
+# Hier wird ausgewählt, welche Provider hinter den Abstraktionen laufen.
+# Der Core kennt nur die Interfaces; diese Datei entscheidet über die Implementierung.
+# Secrets stehen NICHT hier, sondern in .env / Keychain.
+
+profile:
+  name: "JARVIS"
+  language: "de"
+  # Was JARVIS über sich und dich weiß. Wird als System-Prompt gecacht.
+  persona: |
+    Du bist JARVIS, ein persönlicher Assistent. Du sprichst Deutsch,
+    präzise und knapp. Deine Antworten werden vorgelesen — schreibe also
+    sprechbaren Fließtext ohne Aufzählungszeichen, Markdown oder Emojis.
+    Fasse dich kurz: zwei bis drei Sätze, wenn die Frage nicht mehr verlangt.
+    Wenn du etwas nicht weißt, sagst du das, statt zu raten.
+
+providers:
+  # "fake" braucht keine Keys und wird in Tests und beim Trockenlauf benutzt.
+  stt: deepgram        # deepgram | fake
+  tts: elevenlabs      # elevenlabs | fake
+  llm: anthropic       # anthropic | fake
+
+stt:
+  deepgram:
+    model: "flux-general-de"
+    language: "de"
+    sample_rate: 16000
+    encoding: "linear16"
+    # Endpointing: Stille in ms, nach der ein Segment als final gilt.
+    endpointing_ms: 300
+    interim_results: true
+
+tts:
+  elevenlabs:
+    voice_id: "" # leer = Provider-Default; in .env oder hier setzen
+    model: "eleven_flash_v2_5"
+    # Ausgabeformat zum iPad. PCM im LAN, Opus über Mobilfunk.
+    output_format: "pcm_24000"
+    speed: 1.0
+
+llm:
+  anthropic:
+    # Modellwahl pro Aufgabenklasse — der Router liest diese Tabelle.
+    models:
+      conversation: "claude-sonnet-5"
+      classification: "claude-haiku-4-5"
+      planning: "claude-opus-5"
+    max_output_tokens: 1024
+    # Prompt-Caching für System-Prompt und (später) Tool-Schemas.
+    prompt_caching: true
+
+voice:
+  # Audioformat auf der Leitung iPad -> Host.
+  input_sample_rate: 16000
+  input_frame_ms: 20
+  # Ab wie vielen ms zusammenhängender Sprache während der Ausgabe gilt
+  # Reinsprechen als echte Unterbrechung (kürzeres ist "mhm"/"okay").
+  barge_in_min_speech_ms: 200
+  # Wie viele Turns im Kurzzeitgedächtnis bleiben, bevor kompaktiert wird.
+  history_turns: 20
+  # Nach der Antwort automatisch wieder zuhören (Konversationsmodus)?
+  auto_listen_after_reply: false
+
+limits:
+  # Harte Obergrenzen, damit nichts unbemerkt Kosten produziert.
+  max_turn_seconds: 120
+  max_monthly_usd: 150

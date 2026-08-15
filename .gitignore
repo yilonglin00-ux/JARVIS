@@ -1,0 +1,39 @@
+# Secrets — niemals einchecken
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+config/local.yaml
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node / UI
+node_modules/
+ui/dist/
+ui/.vite/
+*.tsbuildinfo
+
+# Laufzeitdaten
+data/
+logs/
+*.sqlite
+*.sqlite3
+*.db
+
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/
