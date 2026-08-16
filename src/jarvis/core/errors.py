@@ -38,5 +38,23 @@ class AuthenticationError(JarvisError):
     """Ein Client hat sich nicht oder falsch ausgewiesen."""
 
 
+class PolicyViolation(JarvisError):
+    """Eine Aktion verstößt gegen `config/policies.yaml`.
+
+    Anders als ein Providerfehler ist das kein Defekt, sondern das System,
+    das tut, was es soll. Der Text wird dem Modell als Werkzeugergebnis
+    zurückgegeben, damit es den Nutzer sinnvoll informieren kann statt es
+    erneut zu versuchen.
+    """
+
+
+class ConfirmationDenied(JarvisError):
+    """Der Nutzer hat abgelehnt — oder nicht geantwortet.
+
+    Beides ist dasselbe Ergebnis: die Aktion findet nicht statt. Ein
+    Timeout darf niemals als Zustimmung durchgehen (Architektur §12).
+    """
+
+
 class ProtocolError(JarvisError):
     """Eine Nachricht auf dem WebSocket war nicht interpretierbar."""

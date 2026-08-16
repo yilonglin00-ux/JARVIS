@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host:
+    name: Host (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # Bewusst ohne [providers]: die Tests laufen gegen die Fakes, und
+      # genau das soll die CI beweisen — kein API-Key, kein Netz, kein
+      # Mikrofon. Dieselben Befehle stehen im README unter "Prüfen".
+      - name: Abhängigkeiten
+        run: |
+          uv venv --python 3.12
+          uv pip install -e ".[dev]"
+
+      - run: .venv/bin/ruff check src tests
+      - run: .venv/bin/ruff format --check src tests
+      - run: .venv/bin/mypy
+      - run: .venv/bin/pytest -q
+
+  client:
+    name: Client (TypeScript)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - run: npm ci
+      - run: npm run typecheck

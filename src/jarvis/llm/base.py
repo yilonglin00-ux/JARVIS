@@ -14,12 +14,17 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Any
 
 
 class Role(StrEnum):
     SYSTEM = "system"
     USER = "user"
     ASSISTANT = "assistant"
+    # Ergebnisse von Werkzeugaufrufen. Anthropic verpackt sie in eine
+    # User-Nachricht, OpenAI in eine eigene Rolle — welche von beidem, ist
+    # Sache des Adapters, nicht des Core.
+    TOOL = "tool"
 
 
 class TaskClass(StrEnum):
@@ -31,9 +36,40 @@ class TaskClass(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class ToolSpec:
+    """Ein Werkzeug, so wie das Modell es zu sehen bekommt."""
+
+    name: str
+    description: str
+    input_schema: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class ToolCall:
+    """Das Modell möchte ein Werkzeug aufrufen."""
+
+    id: str
+    name: str
+    arguments: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class ToolOutcome:
+    """Was von einem Werkzeugaufruf zurück ins Gespräch geht."""
+
+    call_id: str
+    content: str
+    is_error: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class Message:
     role: Role
-    content: str
+    content: str = ""
+    # Nur auf Assistant-Nachrichten: die Werkzeuge, die das Modell wollte.
+    tool_calls: tuple[ToolCall, ...] = ()
+    # Nur auf Tool-Nachrichten: die Ergebnisse dazu.
+    tool_results: tuple[ToolOutcome, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,19 +87,24 @@ class LLMRequest:
     model: str | None = None
     max_output_tokens: int = 1024
     temperature: float | None = None
-    # Stabiler Präfix (System-Prompt, später Tool-Schemas) darf gecacht
+    # Stabiler Präfix — Werkzeugschemas und System-Prompt — darf gecacht
     # werden. Adapter, die kein Caching können, ignorieren das Flag.
     cache_system: bool = True
+    tools: tuple[ToolSpec, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
 class StreamChunk:
     """Ein Stück eines laufenden Streams.
 
-    Genau eines von `text` (Token) oder `usage` (Abschluss) ist gesetzt.
+    Genau eines von `text`, `tool_call` oder `usage` ist gesetzt. Ein
+    `tool_call` kommt erst, wenn seine Argumente vollständig sind — halbe
+    JSON-Fragmente über die Core-Grenze zu reichen, hätte jeden Konsumenten
+    gezwungen, den Parser des jeweiligen Anbieters nachzubauen.
     """
 
     text: str = ""
+    tool_call: ToolCall | None = None
     usage: Usage | None = None
 
 

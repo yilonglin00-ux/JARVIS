@@ -106,3 +106,138 @@ button.primary {
   max-height: 14rem;
   overflow-y: auto;
 }
+
+/* --- Werkzeuge --------------------------------------------------------- */
+
+.tools {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.tools li {
+  padding: 0.35rem 0;
+  border-bottom: 1px solid #222;
+}
+
+.tools li.running {
+  color: #9ad;
+}
+
+.tools li.failed {
+  color: #f88;
+}
+
+.tools .risk {
+  font-size: 0.7rem;
+  color: #888;
+  border: 1px solid #444;
+  border-radius: 3px;
+  padding: 0 0.3rem;
+}
+
+.tool-detail {
+  color: #888;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  max-height: 6rem;
+  overflow-y: auto;
+}
+
+/* --- Bestätigungsdialog ------------------------------------------------ */
+/* Der einzige Teil dieser Oberfläche, der gestaltet ist. Hier gibt jemand
+   eine Aktion mit Außenwirkung frei — das muss lesbar sein und darf sich
+   nicht versehentlich wegtippen lassen. */
+
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.confirm {
+  background: #16181c;
+  border: 2px solid #556;
+  border-radius: 10px;
+  padding: 1.25rem;
+  max-width: 32rem;
+  width: 100%;
+}
+
+.confirm.risk-destructive {
+  border-color: #c33;
+}
+
+.confirm-risk {
+  font-size: 0.75rem;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 0.5rem;
+}
+
+.confirm-summary {
+  font-size: 1.15rem;
+  line-height: 1.4;
+  margin: 0 0 0.75rem;
+}
+
+.confirm-args {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  color: #bbb;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.confirm-args div {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.15rem 0;
+}
+
+.confirm-args dt {
+  color: #888;
+  min-width: 6rem;
+}
+
+.confirm-args dd {
+  margin: 0;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.confirm-warning {
+  color: #fb6;
+  font-size: 0.85rem;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.confirm-actions button {
+  flex: 1;
+  /* Apple HIG: mindestens 44 pt. Auf dem iPad wird hier mit dem Daumen
+     getippt, nicht mit einer Maus gezielt. */
+  min-height: 44px;
+  font-size: 1rem;
+}
+
+button.danger {
+  background: #7a2020;
+  border-color: #a33;
+}
+
+.confirm-timeout {
+  margin: 0.75rem 0 0;
+  font-size: 0.75rem;
+  color: #888;
+}

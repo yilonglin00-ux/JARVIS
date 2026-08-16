@@ -21,6 +21,7 @@ from jarvis.llm.base import (
     Message,
     Role,
     StreamChunk,
+    ToolCall,
     Usage,
 )
 
@@ -63,17 +64,66 @@ class AnthropicLLM(LLMProvider):
             return None
         block: dict[str, Any] = {"type": "text", "text": req.system}
         if req.cache_system:
+            # Ein Cache-Punkt speichert den gesamten Präfix bis hierhin.
+            # Weil Anthropic in der Reihenfolge Werkzeuge → System →
+            # Nachrichten aufbaut, sind die Werkzeugschemas damit
+            # mitgecacht — und die sind der größere Block von beiden.
             block["cache_control"] = {"type": "ephemeral"}
         return [block]
 
     @staticmethod
-    def _to_wire(messages: list[Message]) -> list[dict[str, str]]:
+    def _to_wire(messages: list[Message]) -> list[dict[str, Any]]:
         # System-Nachrichten gehören bei Anthropic in den `system`-Parameter,
         # nicht in die Nachrichtenliste.
+        wire: list[dict[str, Any]] = []
+        for m in messages:
+            if m.role is Role.SYSTEM:
+                continue
+            if m.role is Role.TOOL:
+                # Werkzeugergebnisse reist Anthropic als User-Nachricht an.
+                wire.append(
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": outcome.call_id,
+                                "content": outcome.content,
+                                "is_error": outcome.is_error,
+                            }
+                            for outcome in m.tool_results
+                        ],
+                    }
+                )
+                continue
+            if m.tool_calls:
+                blocks: list[dict[str, Any]] = []
+                if m.content.strip():
+                    blocks.append({"type": "text", "text": m.content})
+                blocks.extend(
+                    {
+                        "type": "tool_use",
+                        "id": call.id,
+                        "name": call.name,
+                        "input": call.arguments,
+                    }
+                    for call in m.tool_calls
+                )
+                wire.append({"role": "assistant", "content": blocks})
+                continue
+            if m.content.strip():
+                wire.append({"role": m.role.value, "content": m.content})
+        return wire
+
+    @staticmethod
+    def _tool_params(req: LLMRequest) -> list[dict[str, Any]]:
         return [
-            {"role": m.role.value, "content": m.content}
-            for m in messages
-            if m.role is not Role.SYSTEM
+            {
+                "name": spec.name,
+                "description": spec.description,
+                "input_schema": spec.input_schema,
+            }
+            for spec in req.tools
         ]
 
     async def stream(self, req: LLMRequest) -> AsyncIterator[StreamChunk]:
@@ -85,6 +135,8 @@ class AnthropicLLM(LLMProvider):
         system = self._system_blocks(req)
         if system is not None:
             kwargs["system"] = system
+        if req.tools:
+            kwargs["tools"] = self._tool_params(req)
         if req.temperature is not None:
             kwargs["temperature"] = req.temperature
 
@@ -96,6 +148,23 @@ class AnthropicLLM(LLMProvider):
                 final = await stream.get_final_message()
         except Exception as exc:
             raise ProviderError("anthropic", str(exc)) from exc
+
+        # Werkzeugaufrufe erst aus der fertigen Nachricht. Anthropic streamt
+        # die Argumente als JSON-Fragmente; sie hier zusammenzusetzen wäre
+        # doppelte Arbeit und würde halbe Objekte über die Core-Grenze
+        # lassen. Der Zeitverlust ist null — Werkzeugblöcke stehen ohnehin
+        # am Ende der Nachricht.
+        for block in getattr(final, "content", []):
+            if getattr(block, "type", "") != "tool_use":
+                continue
+            raw = getattr(block, "input", {})
+            yield StreamChunk(
+                tool_call=ToolCall(
+                    id=str(getattr(block, "id", "")),
+                    name=str(getattr(block, "name", "")),
+                    arguments=dict(raw) if isinstance(raw, dict) else {},
+                )
+            )
 
         usage = getattr(final, "usage", None)
         yield StreamChunk(

@@ -1,0 +1,65 @@
+# JARVIS — Sicherheitsregeln
+#
+# Diese Datei entscheidet, was JARVIS ohne Rückfrage tun darf und was nicht.
+# `config/jarvis.yaml` sagt, *ob* es ein Werkzeug gibt; hier steht, *unter
+# welchen Bedingungen* es benutzt werden darf.
+#
+# Zwei Regeln sind im Code verankert und lassen sich hier nicht aushebeln:
+#
+#   1. Risikostufen kann diese Datei nur ANHEBEN. Ein Werkzeug deklariert im
+#      Code seinen Boden; ein niedrigerer Wert hier wird ignoriert und
+#      protokolliert.
+#   2. Inhalte aus dem Netz oder aus Dateien können niemals eine Stufe
+#      ändern. Sie sind Daten, keine Anweisungen.
+
+defaults:
+  # Ab welcher Stufe JARVIS nachfragt, statt einfach zu tun.
+  # read | low | sensitive | destructive
+  confirm_from: sensitive
+
+  # Wie lange auf die Antwort gewartet wird. Keine Antwort = Ablehnung,
+  # niemals stille Ausführung.
+  confirm_timeout_s: 60
+
+  # Ab dieser Stufe genügt eine gesprochene Zustimmung nicht — es braucht
+  # den Tap im Client. Gegen das versehentliche "ja" im Nebensatz.
+  require_tap_from: destructive
+
+  # Wie viele Werkzeugrunden ein einzelner Turn haben darf, bevor
+  # abgebrochen wird. Schützt vor Modellen, die sich im Kreis drehen.
+  max_tool_steps: 6
+
+# Pro Werkzeug nachschärfen oder abschalten. Beispiele:
+#
+#   tools:
+#     dateien.loeschen:
+#       disabled: true          # ganz verbieten statt nur nachfragen
+#     dateien.schreiben:
+#       risk: sensitive         # auch neue Dateien bestätigen lassen
+tools: {}
+
+browser:
+  # WICHTIG: Eine leere Liste heißt *nichts erlaubt*, nicht *alles erlaubt*.
+  # Ein Browser-Agent mit eigenen Cookies ist das gefährlichste Werkzeug im
+  # System; ein vergessener Eintrag soll ihn einschränken, nicht öffnen.
+  #
+  # Ein Eintrag deckt die Domain und alle Unterdomains ab:
+  # "wikipedia.org" erlaubt auch "de.wikipedia.org".
+  #
+  # "*" erlaubt das ganze Web. Adressen im eigenen Netz — Loopback, private
+  # IP-Bereiche, Link-Local — bleiben auch dann gesperrt.
+  #
+  #   allowed_domains:
+  #     - wikipedia.org
+  #     - tagesschau.de
+  allowed_domains: []
+
+  # Heruntergeladene Dateien landen ausschließlich hier und werden nie
+  # ausgeführt.
+  download_dir: "~/JARVIS-Downloads"
+
+files:
+  # Der Sandkasten für alle Dateiwerkzeuge. Außerhalb davon geht nichts —
+  # auch nicht über Symlinks oder "..".
+  root: "~/JARVIS-Dateien"
+  max_file_kb: 512

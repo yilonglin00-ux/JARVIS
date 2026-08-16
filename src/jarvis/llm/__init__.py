@@ -7,6 +7,9 @@ from jarvis.llm.base import (
     Role,
     StreamChunk,
     TaskClass,
+    ToolCall,
+    ToolOutcome,
+    ToolSpec,
     Usage,
 )
 from jarvis.llm.router import ModelRouter
@@ -21,5 +24,8 @@ __all__ = [
     "Role",
     "StreamChunk",
     "TaskClass",
+    "ToolCall",
+    "ToolOutcome",
+    "ToolSpec",
     "Usage",
 ]

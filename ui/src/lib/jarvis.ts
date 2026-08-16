@@ -15,8 +15,25 @@
 import { MicCapture } from './audio/capture';
 import { AudioPlayer } from './audio/player';
 import { createVoiceDetector, SpeechGate, type VoiceDetector } from './audio/vad';
-import type { ConversationState, ServerMessage } from './protocol';
+import type {
+  ConfirmRequestMsg,
+  ConversationState,
+  RiskLevel,
+  ServerMessage,
+} from './protocol';
 import { JarvisSocket, type ConnectionState } from './ws';
+
+/** Ein Werkzeug, das gerade läuft oder eben gelaufen ist. */
+export interface ToolActivity {
+  callId: string;
+  tool: string;
+  risk: RiskLevel;
+  summary: string;
+  running: boolean;
+  ok: boolean;
+  detail: string;
+  durationMs: number;
+}
 
 export interface JarvisView {
   connection: ConnectionState;
@@ -28,6 +45,9 @@ export interface JarvisView {
   lastLatencyMs: number | null;
   vadKind: string;
   error: string | null;
+  tools: ToolActivity[];
+  /** Höchstens eine offene Rückfrage — mehrere Dialoge übereinander wären gefährlich. */
+  confirm: ConfirmRequestMsg | null;
   log: string[];
 }
 
@@ -41,8 +61,12 @@ const INITIAL: JarvisView = {
   lastLatencyMs: null,
   vadKind: '—',
   error: null,
+  tools: [],
+  confirm: null,
   log: [],
 };
+
+const MAX_TOOL_ROWS = 8;
 
 export class JarvisClient {
   private socket: JarvisSocket | null = null;
@@ -134,7 +158,7 @@ export class JarvisClient {
     this.patch({ transcript: text, reply: '' });
   }
 
-  /** Manueller Stopp — der Kill-Switch aus Architektur §12. */
+  /** Unterbrechung: erst lokal flushen, dann melden. */
   interrupt(reason = 'user_stop'): void {
     this.player?.flush();
     this.socket?.send({
@@ -142,7 +166,28 @@ export class JarvisClient {
       played_ms: this.player?.playedMilliseconds ?? null,
       reason,
     });
-    this.patch({ state: 'listening' });
+    this.patch({ state: 'listening', confirm: null });
+  }
+
+  /**
+   * Kill-Switch (Architektur §12): stoppt alles und lehnt jede offene
+   * Rückfrage ab. Getrennt von `interrupt`, weil Barge-in ein normaler
+   * Gesprächsvorgang ist und das hier ein Notaus.
+   */
+  stopEverything(): void {
+    this.player?.flush();
+    this.socket?.send({ type: 'user.stop' });
+    this.patch({ state: 'idle', confirm: null });
+    this.note('Kill-Switch — alles gestoppt');
+  }
+
+  /** Antwort auf die offene Rückfrage. Nur `true` lässt die Aktion zu. */
+  respondToConfirmation(requestId: string, approved: boolean): void {
+    this.socket?.send({ type: 'confirm.response', request_id: requestId, approved });
+    if (this.view.confirm?.request_id === requestId) {
+      this.patch({ confirm: null });
+    }
+    this.note(approved ? 'Bestätigt' : 'Abgelehnt');
   }
 
   disconnect(): void {
@@ -198,7 +243,7 @@ export class JarvisClient {
           // Neuer Turn: Zähler der abgespielten Dauer zurücksetzen, sonst
           // wäre `played_ms` beim nächsten Barge-in kumuliert und falsch.
           this.player?.reset();
-          this.patch({ reply: '' });
+          this.patch({ reply: '', tools: [] });
         }
         this.patch({ state: message.state });
         break;
@@ -223,6 +268,61 @@ export class JarvisClient {
         if (message.name === 'speech_end_to_first_audio') {
           this.patch({ lastLatencyMs: Math.round(message.ms) });
           this.note(`Latenz Sprachende → erster Ton: ${Math.round(message.ms)} ms`);
+        }
+        break;
+
+      case 'tool.started':
+        this.patch({
+          tools: [
+            {
+              callId: message.call_id,
+              tool: message.tool,
+              risk: message.risk,
+              summary: message.summary,
+              running: true,
+              ok: true,
+              detail: '',
+              durationMs: 0,
+            },
+            ...this.view.tools,
+          ].slice(0, MAX_TOOL_ROWS),
+        });
+        this.note(`Werkzeug ${message.tool} …`);
+        break;
+
+      case 'tool.finished':
+        this.patch({
+          tools: this.view.tools.map((entry) =>
+            entry.callId === message.call_id
+              ? {
+                  ...entry,
+                  running: false,
+                  ok: message.ok,
+                  detail: message.display_text,
+                  durationMs: Math.round(message.duration_ms),
+                }
+              : entry,
+          ),
+        });
+        this.note(
+          `Werkzeug ${message.tool} ${message.ok ? 'fertig' : 'gescheitert'} ` +
+            `(${Math.round(message.duration_ms)} ms)`,
+        );
+        break;
+
+      case 'confirm.request':
+        this.patch({ confirm: message });
+        this.note(`Rückfrage: ${message.summary}`);
+        break;
+
+      case 'confirm.resolved':
+        // Auch dann schließen, wenn ein anderes Gerät geantwortet hat oder
+        // die Zeit abgelaufen ist.
+        if (this.view.confirm?.request_id === message.request_id) {
+          this.patch({ confirm: null });
+        }
+        if (message.decided_by === 'timeout') {
+          this.note('Rückfrage abgelaufen — Aktion nicht ausgeführt');
         }
         break;
 

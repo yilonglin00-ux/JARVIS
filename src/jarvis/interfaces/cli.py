@@ -18,10 +18,13 @@ import typer
 from jarvis import __version__, factory
 from jarvis.config.settings import load_settings
 from jarvis.core.errors import JarvisError
-from jarvis.core.events import EventBus
+from jarvis.core.events import ConfirmationRequested, EventBus, ToolStarted
 from jarvis.core.kernel import JarvisCore
 from jarvis.core.session import Session, Turn
 from jarvis.logging import configure_logging
+from jarvis.security.confirm import ConfirmationBroker
+from jarvis.security.policy import PolicyEngine, load_policies
+from jarvis.tools.base import ToolContext
 
 app = typer.Typer(add_completion=False, help="JARVIS — persönlicher KI-Assistent (Host)")
 log = structlog.get_logger(__name__)
@@ -64,9 +67,17 @@ def doctor() -> None:
     """Prüfen, ob Konfiguration und Schlüssel für den gewählten Modus reichen."""
     settings = load_settings()
     providers = settings.profile.providers
+    policy = PolicyEngine(load_policies())
     typer.echo(f"JARVIS {__version__}")
     typer.echo(f"Sprache:  {settings.language}")
     typer.echo(f"Provider: stt={providers.stt}  tts={providers.tts}  llm={providers.llm}")
+
+    tools = factory.build_tools(settings, policy)
+    typer.echo(f"Werkzeuge: {', '.join(tools.names) if len(tools) else '— keine'}")
+    typer.echo(f"Sandkasten: {policy.files_root}")
+    typer.echo(f"Bestätigung ab: {policy.confirm_from} (Timeout {policy.confirm_timeout_s:.0f} s)")
+    domains = policy.allowed_domains
+    typer.echo(f"Browser-Domains: {', '.join(domains) if domains else '— keine, Browser aus'}")
 
     problems: list[str] = []
     if not settings.secrets.jarvis_auth_token.get_secret_value():
@@ -89,6 +100,31 @@ def doctor() -> None:
     typer.echo("\n  ✓ Konfiguration vollständig.")
 
 
+async def _watch_events(bus: EventBus, broker: ConfirmationBroker) -> None:
+    """Werkzeuge anzeigen und Rückfragen im Terminal beantworten.
+
+    Im Client macht das der Bestätigungsdialog. Hier übernimmt es das
+    Terminal — dieselben Ereignisse, dieselbe Regel: nur ein ausdrückliches
+    „j“ lässt die Aktion zu.
+    """
+    subscription = bus.subscribe(ConfirmationRequested, ToolStarted)
+    try:
+        async for event in subscription:
+            if isinstance(event, ToolStarted):
+                sys.stdout.write(f"\n  ⚙ {event.tool} ({event.risk})\n")
+                sys.stdout.flush()
+                continue
+            if not isinstance(event, ConfirmationRequested):
+                continue
+            sys.stdout.write(f"\n  ⚠ {event.summary}\n")
+            for key, value in event.arguments.items():
+                sys.stdout.write(f"      {key}: {value}\n")
+            answer = (await asyncio.to_thread(input, "  [j/N] › ")).strip().lower()
+            broker.resolve(event.request_id, approved=answer in {"j", "ja"})
+    finally:
+        subscription.close()
+
+
 async def _chat() -> None:
     settings = load_settings()
     configure_logging(
@@ -96,11 +132,28 @@ async def _chat() -> None:
         log_transcripts=settings.secrets.jarvis_log_transcripts,
     )
     bus = EventBus()
+    policy = PolicyEngine(load_policies())
     llm = factory.build_llm(settings)
-    core = JarvisCore(llm=llm, settings=settings, bus=bus, router=factory.build_router(settings))
+    browser = factory.build_browser_backend(settings, policy)
+    research = factory.build_research(settings, policy)
+    tools = factory.build_tools(settings, policy, browser=browser, research=research)
+    broker = ConfirmationBroker(bus, timeout_s=policy.confirm_timeout_s)
+    core = JarvisCore(
+        llm=llm,
+        settings=settings,
+        bus=bus,
+        router=factory.build_router(settings),
+        tools=tools,
+        tool_context=ToolContext(session_id="cli", bus=bus, policy=policy, confirm=broker),
+        max_tool_steps=policy.max_tool_steps,
+    )
     session = Session(bus, history_turns=settings.voice.history_turns)
+    watcher = asyncio.create_task(_watch_events(bus, broker), name="cli-events")
 
-    typer.echo(f"JARVIS {__version__} — Textmodus. Beenden mit Strg-D oder /exit.\n")
+    typer.echo(f"JARVIS {__version__} — Textmodus. Beenden mit Strg-D oder /exit.")
+    if len(tools):
+        typer.echo(f"Werkzeuge: {', '.join(tools.names)}")
+    typer.echo("")
     try:
         while True:
             try:
@@ -135,7 +188,13 @@ async def _chat() -> None:
                 sys.stdout.write(f"\n(Fehler: {exc})")
             sys.stdout.write("\n\n")
     finally:
+        watcher.cancel()
+        bus.close()
         await core.aclose()
+        if browser is not None:
+            await browser.aclose()
+        if research is not None:
+            await research.aclose()
 
 
 def main() -> None:

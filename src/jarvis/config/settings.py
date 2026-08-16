@@ -47,6 +47,39 @@ class VoiceConfig(BaseModel):
         return int(self.input_sample_rate * self.input_frame_ms / 1000) * 2
 
 
+class ToolsConfig(BaseModel):
+    """Was an Werkzeugen überhaupt angeboten wird.
+
+    Der Feinschnitt — welches Werkzeug welche Risikostufe hat, welche
+    Domains der Browser sehen darf — steht bewusst nicht hier, sondern in
+    `config/policies.yaml`. Diese Datei sagt *ob*, jene sagt *unter
+    welchen Bedingungen*.
+    """
+
+    enabled: bool = True
+    browser: bool = False
+    browser_headless: bool = True
+    research: bool = False
+    # Leer = Zeitzone des Hosts.
+    timezone: str = ""
+
+
+class ResearchConfig(BaseModel):
+    """Welche Rechercheanbieter mitlaufen.
+
+    Mehr als einer ist kein Luxus: erst zwei unabhängige Wege machen
+    sichtbar, ob Quellen sich einig sind (Architektur §8).
+    """
+
+    providers: list[ProviderName] = Field(default_factory=lambda: ["perplexity", "brave"])
+    max_results: int = 6
+    # Volltext nachladen, wenn ein Treffer nur als URL kommt.
+    fetch_pages: bool = True
+    fetch_limit: int = 3
+    respect_robots: bool = True
+    perplexity_model: str = "sonar"
+
+
 class LimitsConfig(BaseModel):
     max_turn_seconds: int = 120
     max_monthly_usd: float = 150.0
@@ -58,6 +91,8 @@ class Profile(BaseModel):
     profile: ProfileConfig = Field(default_factory=ProfileConfig)
     providers: ProviderSelection = Field(default_factory=ProviderSelection)
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
+    tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    research: ResearchConfig = Field(default_factory=ResearchConfig)
     limits: LimitsConfig = Field(default_factory=LimitsConfig)
 
     # Anbieterspezifische Blöcke bleiben absichtlich untypisiert: der Core
