@@ -29,6 +29,12 @@ providers = [
 browser = [
     "playwright>=1.49",
 ]
+# Für die Recherche. Ohne dieses Extra läuft sie trotzdem — der Textausbau
+# fällt dann auf einen einfacheren Weg zurück, der Navigation und Fußzeilen
+# schlechter vom Artikel trennt.
+research = [
+    "trafilatura>=1.12",
+]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
@@ -78,7 +84,7 @@ warn_unreachable = true
 disallow_untyped_decorators = false
 
 [[tool.mypy.overrides]]
-module = ["anthropic.*", "deepgram.*", "elevenlabs.*", "playwright.*", "yaml"]
+module = ["anthropic.*", "deepgram.*", "elevenlabs.*", "playwright.*", "trafilatura.*", "yaml"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

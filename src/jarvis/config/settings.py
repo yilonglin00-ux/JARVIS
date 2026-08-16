@@ -59,8 +59,25 @@ class ToolsConfig(BaseModel):
     enabled: bool = True
     browser: bool = False
     browser_headless: bool = True
+    research: bool = False
     # Leer = Zeitzone des Hosts.
     timezone: str = ""
+
+
+class ResearchConfig(BaseModel):
+    """Welche Rechercheanbieter mitlaufen.
+
+    Mehr als einer ist kein Luxus: erst zwei unabhängige Wege machen
+    sichtbar, ob Quellen sich einig sind (Architektur §8).
+    """
+
+    providers: list[ProviderName] = Field(default_factory=lambda: ["perplexity", "brave"])
+    max_results: int = 6
+    # Volltext nachladen, wenn ein Treffer nur als URL kommt.
+    fetch_pages: bool = True
+    fetch_limit: int = 3
+    respect_robots: bool = True
+    perplexity_model: str = "sonar"
 
 
 class LimitsConfig(BaseModel):
@@ -75,6 +92,7 @@ class Profile(BaseModel):
     providers: ProviderSelection = Field(default_factory=ProviderSelection)
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    research: ResearchConfig = Field(default_factory=ResearchConfig)
     limits: LimitsConfig = Field(default_factory=LimitsConfig)
 
     # Anbieterspezifische Blöcke bleiben absichtlich untypisiert: der Core

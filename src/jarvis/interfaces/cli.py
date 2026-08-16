@@ -135,7 +135,8 @@ async def _chat() -> None:
     policy = PolicyEngine(load_policies())
     llm = factory.build_llm(settings)
     browser = factory.build_browser_backend(settings, policy)
-    tools = factory.build_tools(settings, policy, browser=browser)
+    research = factory.build_research(settings, policy)
+    tools = factory.build_tools(settings, policy, browser=browser, research=research)
     broker = ConfirmationBroker(bus, timeout_s=policy.confirm_timeout_s)
     core = JarvisCore(
         llm=llm,
@@ -192,6 +193,8 @@ async def _chat() -> None:
         await core.aclose()
         if browser is not None:
             await browser.aclose()
+        if research is not None:
+            await research.aclose()
 
 
 def main() -> None:

@@ -4,9 +4,10 @@ Persönlicher, sprachgesteuerter KI-Assistent. Kein Chatbot: modulare Plattform 
 austauschbaren Providern (STT/TTS/LLM/Research), Tool- und Agentensystem,
 mehrschichtigem Gedächtnis, Sicherheitsmodell mit Bestätigungspflicht und HUD.
 
-**Stand: Phase 3 — Werkzeuge und Sicherheitsmodell.** Die Sprachschleife aus
-Phase 2 steht; dazugekommen sind Werkzeuge mit Risikostufen, Bestätigungs-
-pflicht und ein Browser-Agent. Alles Weitere folgt in Phasen; der vollständige
+**Stand: Phase 4 — Recherche mit Belegen.** Sprachschleife (Phase 2) und
+Werkzeuge mit Risikostufen und Bestätigungspflicht (Phase 3) stehen; dazu-
+gekommen ist Mehrquellen-Recherche, die Widersprüche benennt statt sie
+wegzurechnen. Alles Weitere folgt in Phasen; der vollständige
 Entwurf steht in [`docs/architektur.md`](docs/architektur.md).
 
 ## Aufbau
@@ -21,7 +22,7 @@ Client-Server, mit dem Audio-Ein- und -Ausgang auf dem Client:
 │ AudioWorklet → 16 kHz PCM     │◀─wss──▶│ STT · LLM · TTS               │
 │ VAD → Barge-in                │        │ Session · Event-Bus           │
 │ AudioWorklet-Player + Analyser│        │ Werkzeuge · Policy · Browser  │
-│ Bestätigungsdialog            │        │ (ab Phase 4: Research)        │
+│ Bestätigungsdialog            │        │ Recherche · Belege · Zitate   │
 └───────────────────────────────┘        └───────────────────────────────┘
 ```
 
@@ -32,6 +33,7 @@ uv venv --python 3.12
 uv pip install -e ".[dev]"          # Fake-Provider, keine Keys nötig
 uv pip install -e ".[providers]"    # zusätzlich für echte Provider
 uv pip install -e ".[browser]"      # nur für den Browser-Agenten (Phase 3)
+uv pip install -e ".[research]"     # sauberer Textausbau für die Recherche
 
 cp .env.example .env
 .venv/bin/python -m jarvis.interfaces.cli token   # Token nach .env kopieren
@@ -80,6 +82,7 @@ cd ui && npm run typecheck
 | `src/jarvis/security/` | Risikostufen, Policy-Engine, Bestätigungsfluss |
 | `src/jarvis/tools/` | Werkzeug-ABC, Verzeichnis mit Schleuse, Builtins |
 | `src/jarvis/browser/` | Browser-Abstraktion, Playwright-Backend, Fake |
+| `src/jarvis/research/` | Recherchestrecke: Provider, Fetcher, Evaluator, Werkzeug |
 | `src/jarvis/interfaces/` | WS-Protokoll, FastAPI-Server, Auth, CLI |
 | `src/jarvis/factory.py` | einzige Stelle, die konkrete Provider kennt |
 | `ui/src/lib/` | WS-Client, Audio-Capture/Player, VAD |
@@ -105,6 +108,18 @@ Drei Regeln stehen im Code, nicht in der Konfiguration:
 Was erlaubt ist, steht in [`config/policies.yaml`](config/policies.yaml). Der
 Browser ist ab Werk aus und braucht zusätzlich eine Domain-Allowlist — eine
 leere Liste heißt *nichts erlaubt*, nicht *alles erlaubt*.
+
+## Recherche
+
+Zwei unabhängige Suchwege (Perplexity Sonar und Brave), entdoppelt und nach
+Aktualität geordnet. Belege bleiben **je Quelle getrennt** — nichts wird zu
+einem Absatz verrechnet. Nur deshalb kann JARVIS „die Quellen sind sich nicht
+einig“ sagen, statt sich unbemerkt für eine Seite zu entscheiden.
+
+Widersprüche werden nicht *erkannt* — das ginge nur semantisch. Markiert wird,
+was überprüfbar ist: zwei unabhängige Domains, die zur selben Einheit
+verschiedene Zahlen nennen. Den Rest muss das Modell tun, mit einer Auflage, die
+bewusst **außerhalb** der Untrusted-Klammer um die Belege steht.
 
 ## Datenschutz in einem Satz
 

@@ -19,6 +19,11 @@ from jarvis.core.errors import ConfigurationError
 from jarvis.llm.base import LLMProvider
 from jarvis.llm.fake import FakeLLM
 from jarvis.llm.router import ModelRouter
+from jarvis.research.base import ResearchProvider
+from jarvis.research.evaluator import Evaluator
+from jarvis.research.fetcher import PageFetcher
+from jarvis.research.pipeline import ResearchPipeline
+from jarvis.research.tools import ResearchTool
 from jarvis.security.policy import PolicyEngine
 from jarvis.tools.base import Tool
 from jarvis.tools.builtin import (
@@ -124,11 +129,70 @@ def build_browser_backend(settings: Settings, policy: PolicyEngine) -> BrowserBa
     )
 
 
+def build_research(settings: Settings, policy: PolicyEngine) -> ResearchPipeline | None:
+    """Recherchestrecke, oder None wenn abgeschaltet oder ohne Schlüssel.
+
+    Ein Anbieter ohne Schlüssel wird stillschweigend weggelassen, statt bei
+    jeder Suche einen Fehler zu liefern. Bleibt keiner übrig, gibt es die
+    Pipeline nicht — und damit das Werkzeug nicht, statt eines, das immer
+    scheitert.
+    """
+    config = settings.profile.research
+    if not settings.profile.tools.research:
+        return None
+
+    providers: list[ResearchProvider] = []
+    for name in config.providers:
+        if name == "perplexity":
+            key = settings.secrets.perplexity_api_key.get_secret_value()
+            if key:
+                from jarvis.research.perplexity import PerplexityResearch
+
+                providers.append(PerplexityResearch(key, model=config.perplexity_model))
+            else:
+                log.warning("research.provider_skipped", provider=name, reason="kein Schlüssel")
+        elif name == "brave":
+            key = settings.secrets.brave_api_key.get_secret_value()
+            if key:
+                from jarvis.research.websearch import BraveResearch
+
+                providers.append(BraveResearch(key, country=settings.language))
+            else:
+                log.warning("research.provider_skipped", provider=name, reason="kein Schlüssel")
+        elif name == "fake":
+            from jarvis.research.fake import FakeResearch
+
+            providers.append(FakeResearch())
+        else:
+            raise ConfigurationError(
+                f"Unbekannter Research-Provider '{name}' in config/jarvis.yaml"
+            )
+
+    if not providers:
+        log.warning("research.disabled", reason="kein Anbieter mit Schlüssel")
+        return None
+    if len(providers) == 1:
+        # Kein Fehler, aber erwähnenswert: mit einer Quelle gibt es keinen
+        # Abgleich, und Widersprüche können gar nicht auffallen.
+        log.warning("research.single_provider", provider=providers[0].name)
+
+    fetcher = (
+        PageFetcher(policy, respect_robots=config.respect_robots) if config.fetch_pages else None
+    )
+    return ResearchPipeline(
+        providers=providers,
+        evaluator=Evaluator(max_findings=config.max_results + 2),
+        fetcher=fetcher,
+        fetch_limit=config.fetch_limit,
+    )
+
+
 def build_tools(
     settings: Settings,
     policy: PolicyEngine,
     *,
     browser: BrowserBackend | None = None,
+    research: ResearchPipeline | None = None,
 ) -> ToolRegistry:
     """Alle aktiven Werkzeuge. Die Policy entscheidet, was mitkommt."""
     registry = ToolRegistry()
@@ -147,6 +211,8 @@ def build_tools(
     ]
     if browser is not None:
         candidates += browser_tools(browser)
+    if research is not None:
+        candidates.append(ResearchTool(research, max_results=settings.profile.research.max_results))
 
     for tool in candidates:
         # Abgeschaltete Werkzeuge tauchen gar nicht erst im Schema auf. Ein

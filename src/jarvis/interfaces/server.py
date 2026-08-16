@@ -307,9 +307,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         policy = PolicyEngine(load_policies())
         llm = factory.build_llm(settings)
         browser = factory.build_browser_backend(settings, policy)
+        research = factory.build_research(settings, policy)
         app.state.llm = llm
         app.state.policy = policy
-        app.state.tools = factory.build_tools(settings, policy, browser=browser)
+        app.state.tools = factory.build_tools(settings, policy, browser=browser, research=research)
         app.state.router = factory.build_router(settings)
         log.info(
             "jarvis.started",
@@ -325,6 +326,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await llm.aclose()
             if browser is not None:
                 await browser.aclose()
+            if research is not None:
+                await research.aclose()
 
     app = FastAPI(title="JARVIS Host", version=__version__, lifespan=lifespan)
     app.state.settings = settings

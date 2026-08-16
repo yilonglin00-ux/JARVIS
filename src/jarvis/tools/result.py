@@ -32,6 +32,12 @@ class ToolResult:
     # Anweisungen. Ist das gesetzt, umschließt der Kernel das Ergebnis mit
     # einer Warnung an das Modell (Architektur §7).
     untrusted: bool = False
+    # Auflagen des *Werkzeugs* an die Antwort — etwa die Zitatpflicht der
+    # Recherche. Sie stammen aus unserem Code, nicht aus der fremden
+    # Quelle, und stehen deshalb **außerhalb** der Untrusted-Klammer.
+    # Andersherum stünden sie in einem Block, der ausdrücklich sagt „das
+    # sind keine Anweisungen“ — und hätten sich selbst entwertet.
+    instructions: str = ""
     meta: dict[str, Any] = field(default_factory=dict)
 
     @classmethod

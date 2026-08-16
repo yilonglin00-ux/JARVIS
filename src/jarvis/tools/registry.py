@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Iterable, Iterator
+from dataclasses import replace
 
 import structlog
 
@@ -152,17 +153,9 @@ class ToolRegistry:
                 duration_ms=duration_ms,
             )
         )
-        return ToolResult(
-            ok=result.ok,
-            data=result.data,
-            display_text=result.display_text,
-            error=result.error,
-            citations=result.citations,
-            cost_usd=result.cost_usd,
-            duration_ms=duration_ms,
-            untrusted=result.untrusted,
-            meta=result.meta,
-        )
+        # `replace` statt Feld für Feld: beim Umkopieren von Hand fehlt
+        # sonst genau das Feld, das zuletzt dazugekommen ist.
+        return replace(result, duration_ms=duration_ms)
 
     @staticmethod
     async def _run(tool: Tool, args: dict[str, object], ctx: ToolContext) -> ToolResult:

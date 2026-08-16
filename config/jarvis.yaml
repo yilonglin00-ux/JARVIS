@@ -58,8 +58,25 @@ tools:
   # ohne die läuft er auch bei true nicht an.
   browser: false
   browser_headless: true
+  # Recherche braucht mindestens einen Schlüssel (PERPLEXITY_API_KEY oder
+  # BRAVE_API_KEY). Ohne Schlüssel wird das Werkzeug nicht angeboten,
+  # statt bei jeder Suche zu scheitern.
+  research: false
   # Leer = Zeitzone des Hosts.
   timezone: "Europe/Berlin"
+
+research:
+  # Zwei Anbieter sind kein Luxus: erst zwei unabhängige Wege machen
+  # sichtbar, ob die Quellen sich einig sind. Mit nur einem kann ein
+  # Widerspruch gar nicht auffallen.
+  providers: [perplexity, brave]
+  max_results: 6
+  # Volltext nachladen, wenn ein Treffer nur als URL kommt.
+  fetch_pages: true
+  fetch_limit: 3
+  respect_robots: true
+  # sonar für Standardsuchen, sonar-pro für Tiefenrecherche.
+  perplexity_model: "sonar"
 
 voice:
   # Audioformat auf der Leitung iPad -> Host.

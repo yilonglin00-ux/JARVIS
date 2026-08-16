@@ -20,6 +20,25 @@ neuen Provider mitgepflegt.
 verlässt über den Host dein Netz. Das ist eine bewusste Entscheidung für
 Qualität und Latenz, keine Nebenwirkung.
 
+### Dazu seit Phase 4 (Recherche)
+
+| Weg | Inhalt | Empfänger | Verschlüsselt | Gespeichert |
+|---|---|---|---|---|
+| Host → Perplexity | Die **Recherchefrage im Klartext** | Perplexity (USA) | ja | nach Anbieterrichtlinie |
+| Host → Brave | Dieselbe Frage als Suchanfrage | Brave (USA) | ja | nach Anbieterrichtlinie |
+| Host → Webseiten | HTTP-Abruf der Treffer, eigener User-Agent, `robots.txt` respektiert | die jeweilige Seite | je nach Seite | die Seite sieht die IP des Hosts |
+| Webseiten → Host → Anthropic | Seitentext, gekürzt und als fremde Quelle markiert | Anthropic | ja | nach Anbieterrichtlinie |
+
+**Was das praktisch heißt:** Eine Recherchefrage geht an zwei Suchanbieter und
+danach als Beleg an Anthropic. Wer JARVIS etwas Persönliches recherchieren
+lässt, teilt die Frage mit drei Unternehmen. Das ist der Preis der Cloud-Wahl,
+und er fällt hier deutlicher ins Gewicht als bei der Sprachschleife: eine Frage
+verrät oft mehr als ihre Antwort.
+
+Die Fragen werden **nicht** umformuliert oder anonymisiert. Das wäre möglich,
+kostet aber Trefferqualität; wenn du es willst, ist der Ort dafür ein
+Query-Planer vor den Providern.
+
 ### Dazu seit Phase 3 (Werkzeuge)
 
 | Weg | Inhalt | Empfänger | Verschlüsselt | Gespeichert |

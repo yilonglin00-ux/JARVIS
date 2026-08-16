@@ -224,5 +224,10 @@ class JarvisCore:
 def _content_for_model(call: ToolCall, result: ToolResult) -> str:
     body = result.for_model()
     if result.ok and result.untrusted:
-        return UNTRUSTED_WRAPPER.format(source=call.name, body=body)
+        body = UNTRUSTED_WRAPPER.format(source=call.name, body=body)
+    # Auflagen des Werkzeugs kommen *nach* der Klammer. Innerhalb stünden
+    # sie in einem Block, der ausdrücklich sagt, dass er keine Anweisungen
+    # enthält.
+    if result.ok and result.instructions:
+        body = f"{body}\n\n{result.instructions}"
     return body

@@ -537,16 +537,17 @@ Der Audiopegel wird **nicht** übertragen — der Client misst ihn lokal am `Ana
 | **1. Architektur** | *dieses Dokument* | Freigabe durch dich |
 | **2. Minimal Viable JARVIS** ✅ | Host: Repo-Setup, Config, Event-Bus, `JarvisCore`, WS-Server + Auth, je 1× STT/TTS/LLM hinter den ABCs, Barge-in-Gegenstück. iPad: minimaler Client (Mic-Capture, AudioWorklet-Player, Silero-VAD, „Tap to Speak", Statusanzeige, Roh-Transkript) — **bewusst hässlich**, kein HUD. | Flüssiges deutsches Sprachgespräch vom iPad über mehrere Turns mit Kontextbezug; Reinsprechen stoppt die Ausgabe in < 300 ms; kein hörbares Echo; Latenzen protokolliert |
 | **3. Tools** ✅ | `ToolRegistry`, `Tool`-ABC, Risikostufen, Bestätigungsfluss (inkl. Dialog auf dem iPad), Browser-Tool (Playwright auf dem Host), erste Builtins | „Öffne diese Seite und finde die Preise" funktioniert Ende zu Ende; eine SENSITIVE-Aktion löst nachweislich einen Bestätigungsdialog aus |
-| **4. Research + Perplexity** | `ResearchProvider`-Abstraktion, Perplexity Sonar, Websuche, Fetcher/Extractor/Evaluator | Mehrquellen-Recherche mit Zitaten; ein widersprüchliches Thema wird als widersprüchlich benannt |
+| **4. Research + Perplexity** ✅ | `ResearchProvider`-Abstraktion, Perplexity Sonar, Websuche, Fetcher/Extractor/Evaluator | Mehrquellen-Recherche mit Zitaten; ein widersprüchliches Thema wird als widersprüchlich benannt |
 | **5. Planner + Agenten** | Planner, Agent-ABC + Registry, Conversation/Research/Browser-Agent, Schritt- und Kostenbudgets | Mehrschrittige Aufträge werden zerlegt und delegiert; Plan ist im Client sichtbar |
 | **6. Memory** | SQLite + sqlite-vec, Short/Working/Long-Term, Hybrid-Retrieval, Extraktions-Gate | JARVIS erinnert sich sitzungsübergreifend; Einträge sind einsehbar und löschbar |
 | **7. HUD + Erweiterungen** | Vollständiges HUD nach Screenshot, Sprechblase, visuelle Haptik, PWA-Manifest/Icons, Wake Word (Vordergrund), optional Capacitor-Hülle, MCP-Client, Integrationen | Der Screenshot ist real und funktional auf dem iPad |
 
 Nach jeder Phase: lauffähiger Stand, Tests grün, kurzer Abnahme-Check mit dir. Kein „Big Bang".
 
-**Stand:** Phasen 2 und 3 sind im Code umgesetzt und mit Fakes geprüft. Die
-Abnahme auf echter Hardware steht in [`phase2-abnahme.md`](phase2-abnahme.md)
-und [`phase3-abnahme.md`](phase3-abnahme.md) — beide noch offen.
+**Stand:** Phasen 2 bis 4 sind im Code umgesetzt und mit Fakes geprüft. Die
+Abnahme auf echter Hardware steht in [`phase2-abnahme.md`](phase2-abnahme.md),
+[`phase3-abnahme.md`](phase3-abnahme.md) und
+[`phase4-abnahme.md`](phase4-abnahme.md) — alle drei noch offen.
 
 Drei Entscheidungen aus Phase 3, die im Entwurf oben noch nicht standen und die
 sich beim Bauen ergeben haben:
@@ -566,6 +567,18 @@ sich beim Bauen ergeben haben:
    Kontext mit jedem Werkzeug, und das Modell bezöge sich in späteren Turns auf
    Rohdaten statt auf das, was es gesagt hat. Ab Phase 6 übernimmt das Working
    Memory diese Rolle bewusst.
+
+Zwei aus Phase 4, ebenfalls beim Bauen entstanden:
+
+4. **Belege werden nie zu einem Text verrechnet.** Der Entwurf sprach von einem
+   „Synthesizer“ in der Pipeline. Beim Bauen zeigte sich: sobald dort
+   zusammengefasst wird, ist der Widerspruch verloren, bevor das Modell ihn
+   sehen kann. Die Pipeline liefert deshalb nur geordnete Befunde mit Absender;
+   formuliert wird ausschließlich im Modell.
+5. **Auflagen des Werkzeugs stehen außerhalb der Untrusted-Klammer**
+   (`ToolResult.instructions`). Die Zitatpflicht lag zuerst im selben Block wie
+   die Belege — also in einem Bereich, der dem Modell ausdrücklich sagt, dort
+   stehe nichts, was es befolgen soll. Ein Trockenlauf hat es sichtbar gemacht.
 
 **Zusätzlicher Aufwand durch Phase 2 auf dem iPad** gegenüber Desktop: Audio-I/O muss in TypeScript statt Python gebaut werden (AudioWorklets, Resampling, VAD in WASM), plus HTTPS-Setup. Grob ein bis zwei zusätzliche Arbeitstage — dafür entfällt die AEC-Eigenentwicklung, die deutlich teurer gewesen wäre.
 
